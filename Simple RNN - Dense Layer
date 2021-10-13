@@ -1,0 +1,102 @@
+import torch
+import torch.nn as nn
+
+import numpy as np
+import pandas as pd
+from pandas import Series, DataFrame
+import matplotlib.pyplot as plt
+import tensorflow as tf
+
+import sklearn
+
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.layers import LSTM
+from keras.layers import Dropout
+
+dataset = pd.read_csv("Bot-IoT-Training.csv")
+
+
+#Dataset Normalization
+# Deleted unsused columns
+dataset.drop(dataset.columns[[1,2,3,4,5,10,18]], axis = 1, inplace = True)
+df = pd.DataFrame(dataset)
+df['category'].value_counts()
+
+#Category Count
+DDoS_Count, DoS_Count, Recon_Count, Normal_Count, Theft_Count = dataset.category.value_counts()
+
+#Divide by Category
+df_DDoS = df[df['category']=='DDoS']
+df_DoS = df[df['category']=='DoS']
+df_Recon = df[df['category']=='Reconnaissance']
+df_Normal = df[df['category']=='Normal']
+df_Theft = df[df['category']=='Theft']
+
+#Highest value to be minimized in the shape of Theft 65
+df_DDoS.sample(Theft_Count).shape
+df_DoS.sample(Theft_Count).shape
+df_Recon.sample(Theft_Count).shape
+df_Normal.sample(Theft_Count).shape
+df_Theft.sample(Theft_Count).shape
+
+#reduce the size
+new_DDoS = df_DDoS.sample(Theft_Count)
+new_DoS = df_DoS.sample(Theft_Count)
+new_Recon = df_Recon.sample(Theft_Count)
+new_Normal = df_Normal.sample(Theft_Count)
+
+newDF = pd.concat([new_DDoS,new_DoS,new_Recon,new_Normal,df_Theft],axis=0)
+
+print('Random Under-Sampling')
+print(newDF.category.value_counts())
+
+
+dummies = pd.get_dummies(newDF.category)
+merged = pd.concat([dummies,newDF],axis='columns')
+finalDF = merged.drop(['category'],axis='columns')
+
+scaler = MinMaxScaler(feature_range=(-1,1))
+finalDF[['DDoS','DoS','Normal','Reconnaissance','Theft','pkSeqID','seq','stddev','N_IN_Conn_P_SrcIP','min','mean','N_IN_Conn_P_DstIP','drate','srate','max']]
+independent = finalDF[['DDoS','DoS','Normal','Reconnaissance','Theft','pkSeqID','seq','stddev','N_IN_Conn_P_SrcIP','min','mean','N_IN_Conn_P_DstIP','drate','srate','max']]
+finalDF[['attack']]
+dependent = finalDF[['attack']]
+
+x_train,x_test,y_train,y_test = train_test_split(independent,dependent, test_size=0.3,random_state=15)
+
+import tensorflow as tf
+from tensorflow import keras
+from sklearn.metrics import confusion_matrix, classification_report
+
+
+def RNN(x_train,y_train,x_test,y_test,loss, weights):
+    model = keras.Sequential([
+        keras.layers.Dense(100, input_dim=(15),activation='relu'),
+        keras.layers.Dense(50,activation='relu'),
+        keras.layers.Dense(50,activation='relu'),
+        keras.layers.Dense(1,activation='sigmoid')
+    ])
+    
+    model.compile( optimizer='adam',loss='binary_crossentropy',metrics=['accuracy'])
+
+    if weights == -1:
+        model.fit(x_train,y_train, epochs =50)
+    else:
+        model.fit(x_train,y_train, epochs =5,class_weight = weights)
+    
+    print(model.evaluate(x_test,y_test))
+    
+    y_preds = model.predict(x_test)
+    y_preds = np.round(y_preds)
+    
+    print("Classification Report: \n",classification_report(y_test,y_preds))
+    
+    return y_preds
+    
+   y_preds = RNN(x_train,y_train,x_test,y_test,'binary_crossentropy',-1)
